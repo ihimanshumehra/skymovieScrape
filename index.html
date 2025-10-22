@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SkymoviesHD Scraper Control</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; }
+    button { padding: 1rem 2rem; font-size: 1.2rem; cursor: pointer; }
+    #status { margin-top: 1rem; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>SkymoviesHD Scraper</h1>
+  <p>Click the button below to fetch and run the scraper workflow on GitHub Actions.</p>
+  <button id="fetch">Fetch Movies</button>
+  
+  <div id="status"></div>
+
+  <script>
+    const button = document.getElementById('fetch');
+    const status = document.getElementById('status');
+
+    button.onclick = async () => {
+      const token = prompt("Enter your GitHub Personal Access Token (with repo and workflow scopes):");
+      if (!token) {
+        alert("GitHub token required to trigger workflow!");
+        return;
+      }
+
+      status.textContent = "Triggering scraper workflow...";
+      button.disabled = true;
+
+      const repoOwner = "your-github-username";   // Replace with your GitHub username or org
+      const repoName = "your-repository-name";    // Replace with your repo name
+      const workflowFile = "scrape.yml";          // Your workflow filename
+
+      const apiUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/actions/workflows/${workflowFile}/dispatches`;
+
+      try {
+        const res = await fetch(apiUrl, {
+          method: "POST",
+          headers: {
+            "Authorization": "token " + token,
+            "Accept": "application/vnd.github.v3+json",
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            ref: "main",
+            inputs: {
+              max_pages: "50"
+            }
+          })
+        });
+        if (res.status === 204) {
+          status.textContent = "Workflow triggered successfully!\n" +
+            "Check the GitHub Actions tab to monitor progress.\n" +
+            "Artifacts will be available for download when done.";
+        } else {
+          const data = await res.json();
+          status.textContent = `Error triggering workflow: ${res.status}\n${JSON.stringify(data)}`;
+        }
+      } catch (err) {
+        status.textContent = "Network or other error:\n" + err.message;
+      }
+
+      button.disabled = false;
+    }
+  </script>
+</body>
+</html>
