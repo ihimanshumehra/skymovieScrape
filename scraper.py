@@ -196,7 +196,7 @@ def get_page_content(session, url, retries=3):
 # CATEGORY SCRAPING
 # ============================
 
-def scrape_category_page(session, category_url, category_name, max_pages=20, workers=10):
+def scrape_category_page(session, category_url, category_name, max_pages=10, workers=10):
     base_slug = category_url.rstrip('.html').split('/')[-1]
     urls = [
         (i, category_url if i == 1 else f"{category_url.rstrip('.html')}/{i}.html")
@@ -321,7 +321,7 @@ def main():
             pbar.set_description(f"[{idx}/{len(CATEGORIES)}] {category['name'][:30]}")
             
             #movies = scrape_category_page(session, category['url'], category['name'])
-            movies = movies = scrape_category_page(session,category['url'],category['name'],max_pages=20,workers=10)
+            movies = movies = scrape_category_page(session,category['url'],category['name'],max_pages=10,workers=10)
             all_movies.extend(movies)
             
             pbar.update(1)
