@@ -13,59 +13,113 @@
 <body>
   <h1>SkymoviesHD Scraper</h1>
   <p>Click the button below to fetch and run the scraper workflow on GitHub Actions.</p>
-  <button id="fetch">Fetch Movies</button>
   
   <div id="status"></div>
 
   <script>
-    const button = document.getElementById('fetch');
-    const status = document.getElementById('status');
+const owner = "YOUR_USER_OR_ORG";
+const repo  = "YOUR_REPO";
+const workflowFile = "scrape.yml";  // .github/workflows/scrape.yml
 
-    button.onclick = async () => {
-      const token = prompt("Enter your GitHub Personal Access Token (with repo and workflow scopes):");
-      if (!token) {
-        alert("GitHub token required to trigger workflow!");
-        return;
-      }
-
-      status.textContent = "Triggering scraper workflow...";
-      button.disabled = true;
-
-      const repoOwner = "ihimanshumehra";   // Replace with your GitHub username or org
-      const repoName = "skymovieScrape";    // Replace with your repo name
-      const workflowFile = "scrape.yml";          // Your workflow filename
-
-      const apiUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/actions/workflows/${workflowFile}/dispatches`;
-
-      try {
-        const res = await fetch(apiUrl, {
-          method: "POST",
-          headers: {
-            "Authorization": "token " + token,
-            "Accept": "application/vnd.github.v3+json",
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            ref: "main",
-            inputs: {
-              max_pages: "50"
-            }
-          })
-        });
-        if (res.status === 204) {
-          status.textContent = "Workflow triggered successfully!\n" +
-            "Check the GitHub Actions tab to monitor progress.\n" +
-            "Artifacts will be available for download when done.";
-        } else {
-          const data = await res.json();
-          status.textContent = `Error triggering workflow: ${res.status}\n${JSON.stringify(data)}`;
-        }
-      } catch (err) {
-        status.textContent = "Network or other error:\n" + err.message;
-      }
-
-      button.disabled = false;
+async function apiGet(url, token) {
+  const res = await fetch(url, {
+    headers: {
+      "Authorization": "Bearer " + token,
+      "Accept": "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28"
     }
-  </script>
+  });
+  if (!res.ok) throw new Error(`GET ${url} -> ${res.status}`);
+  return res.json();
+}
+
+async function dispatchRun(token, ref = "main", inputs = {max_pages: "50"}) {
+  const url = `https://api.github.com/repos/${owner}/${repo}/actions/workflows/${workflowFile}/dispatches`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer " + token,
+      "Accept": "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ ref, inputs })
+  });
+  if (res.status !== 204) throw new Error(`Dispatch failed: ${res.status}`);
+}
+
+async function getLatestSuccessfulRun(token) {
+  // Get the latest successful workflow_dispatch run for this workflow
+  const url = `https://api.github.com/repos/${owner}/${repo}/actions/workflows/${workflowFile}/runs?event=workflow_dispatch&status=success&per_page=1`;
+  const data = await apiGet(url, token);
+  if (!data.workflow_runs?.length) return null;
+  return data.workflow_runs[0]; // has id, status, conclusion
+}
+
+async function waitForCompletion(token, timeoutMs = 10 * 60 * 1000, pollMs = 5000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const url = `https://api.github.com/repos/${owner}/${repo}/actions/workflows/${workflowFile}/runs?event=workflow_dispatch&per_page=1`;
+    const data = await apiGet(url, token);
+    const run = data.workflow_runs?.[0];
+    if (run && run.status === "completed") return run; // success or failure
+    await new Promise(r => setTimeout(r, pollMs));
+  }
+  throw new Error("Timed out waiting for run to complete");
+}
+
+async function listArtifactsForRun(token, runId) {
+  const url = `https://api.github.com/repos/${owner}/${repo}/actions/runs/${runId}/artifacts`;
+  return apiGet(url, token); // returns { total_count, artifacts: [...] }
+}
+
+async function downloadArtifactZip(token, artifactId, fileName = "skymovies-excel.zip") {
+  const url = `https://api.github.com/repos/${owner}/${repo}/actions/artifacts/${artifactId}/zip`;
+  const res = await fetch(url, {
+    headers: {
+      "Authorization": "Bearer " + token,
+      "Accept": "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28"
+    }
+  });
+  if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+  const blob = await res.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = fileName; // browser will save as this name
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+async function fetchAndDownload() {
+  const token = prompt("Enter PAT with repo + workflow permissions:");
+  if (!token) return;
+
+  // 1) Trigger run
+  await dispatchRun(token);
+
+  // 2) Wait until it completes
+  const completedRun = await waitForCompletion(token);
+
+  if (completedRun.conclusion !== "success") {
+    alert("Workflow finished but not successful.");
+    return;
+  }
+
+  // 3) List artifacts for the completed run
+  const arts = await listArtifactsForRun(token, completedRun.id);
+  if (arts.total_count === 0) {
+    alert("No artifacts found for the run.");
+    return;
+  }
+
+  // 4) Download first artifact as ZIP
+  const artifact = arts.artifacts[0];
+  await downloadArtifactZip(token, artifact.id, `${artifact.name}.zip`);
+}
+</script>
+<button onclick="fetchAndDownload()">Fetch Movies & Download</button>
+
 </body>
 </html>
